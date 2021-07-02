@@ -1,18 +1,20 @@
-#define ARCH KS_ARCH_X86
 #define MODE KS_MODE_32
 
 #include <stdio.h>
 #include <keystone/keystone.h>
 
-unsigned char* j_assemble(const char *code) {
+typedef struct MCode {
+    unsigned char* encode;
+    size_t size;
+} MCode;
+
+MCode j_assemble(const char *code, ks_arch asm_type) {
     ks_engine *ks;
-    ks_err err;
     size_t count;
     unsigned char *encode;
     size_t size;
 
-    err = ks_open(ARCH, MODE, &ks);
-    if (err != KS_ERR_OK) {
+    if (ks_open(asm_type, MODE, &ks) != KS_ERR_OK) {
         printf("ERROR: failed on ks_open(), quit\n");
         // return -1;
     }
@@ -28,5 +30,6 @@ unsigned char* j_assemble(const char *code) {
     // close Keystone instance when done
     ks_close(ks);
 
-    return encode;
+    MCode mcode = { .encode = encode, .size = size };
+    return mcode;
 }

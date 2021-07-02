@@ -1,10 +1,5 @@
-#include "assemble.h"
+#include "linker.h"
 
-#define CODE "INC ecx; DEC edx"
-
-int main(int argc, char **argv)
-{
-    unsigned char* encode = j_assemble(CODE);
-
+int main(int argc, char **argv) {
     return 0;
 }
