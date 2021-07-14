@@ -1,5 +1,3 @@
-#define MODE KS_MODE_32
-
 #include <stdio.h>
 #include <keystone/keystone.h>
 
@@ -8,13 +6,13 @@ typedef struct MCode {
     size_t size;
 } MCode;
 
-MCode j_assemble(const char *code, ks_arch asm_type) {
+MCode j_assemble(const char *code, ks_arch asm_arch, ks_mode asm_mode) {
     ks_engine *ks;
     size_t count;
     unsigned char *encode;
     size_t size;
 
-    if (ks_open(asm_type, MODE, &ks) != KS_ERR_OK) {
+    if (ks_open(asm_arch, asm_mode, &ks) != KS_ERR_OK) {
         printf("ERROR: failed on ks_open(), quit\n");
         // return -1;
     }
@@ -23,9 +21,6 @@ MCode j_assemble(const char *code, ks_arch asm_type) {
         printf("ERROR: ks_asm() failed & count = %lu, error = %u\n",
                 count, ks_errno(ks));
     }
-
-    // NOTE: free encode after usage to avoid leaking memory
-    // ks_free(encode);
 
     // close Keystone instance when done
     ks_close(ks);
