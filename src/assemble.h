@@ -16,10 +16,10 @@ MCode j_assemble(const char *code, ks_arch asm_arch, ks_mode asm_mode) {
         printf("ERROR: failed on ks_open(), quit\n");
         // return -1;
     }
-
+    ks_option(ks, KS_OPT_SYNTAX, KS_OPT_SYNTAX_NASM);
+    
     if (ks_asm(ks, code, 0, &encode, &size, &count) != KS_ERR_OK) {
-        printf("ERROR: ks_asm() failed & count = %lu, error = %u\n",
-                count, ks_errno(ks));
+        printf("ERROR: ks_asm() failed & count = %lu, error = %u\n", count, ks_errno(ks));
     }
 
     // close Keystone instance when done
