@@ -13,7 +13,7 @@ typedef struct Fn {
     size_t size;
     char *text;
     ks_arch asm_arch;
-    ks_mode asm_mode; //currently hard-coded to x86 32-bit Intel syntax
+    ks_mode asm_mode; //currently hard-coded to x86 64-bit Intel syntax
     // maybe stores some flags
 } Fn;
 
@@ -22,6 +22,7 @@ typedef struct JovisIR {
     size_t data_size;
     Fn* code;
     size_t fn_no;
+    size_t text_size;
 } JovisIR;
 
 Fn read_fn(FILE *file) {
@@ -43,14 +44,16 @@ JovisIR open_jir(char* file_name) {
     fread(&header, sizeof(JovisIRHeader), 1, file);
 
     fseek(file, header.data_ptr, SEEK_SET);
-    char *data = (char*)malloc(sizeof(size_t) * header.data_size);
+    char *data = (char*)malloc(header.data_size);
     fread(data, header.data_size, 1, file);
 
     fseek(file, header.code_ptr, SEEK_SET);
     Fn *fns = NULL;
+    size_t text_size = 0;
     if (header.fn_no > 0) fns = malloc(sizeof(Fn)*header.fn_no);
     for (size_t i = 0; i < header.fn_no; i++) {
         fns[i] = read_fn(file);
+        text_size += fns[i].size;
     }
 
     fclose(file);
@@ -59,7 +62,8 @@ JovisIR open_jir(char* file_name) {
         .data = data,
         .data_size = header.data_size,
         .code = fns,
-        .fn_no = header.fn_no
+        .fn_no = header.fn_no,
+        .text_size = text_size
     };
     return ir;
 }
@@ -69,12 +73,18 @@ void create_ir(char *out_name, JovisIR ir) {
     JovisIRHeader header;
     header.data_ptr = sizeof(JovisIRHeader);
     header.data_size = ir.data_size;
-    header.code_ptr = sizeof(JovisIRHeader) + ir.data_size - 1;
-    header.fn_no = 0;
+    header.code_ptr = sizeof(JovisIRHeader) + ir.data_size;
+    header.fn_no = ir.fn_no;
+    // header.fn_no = 0;
 
     fwrite(&header, sizeof(JovisIRHeader), 1, file);
 
     fwrite(ir.data, ir.data_size, 1, file);
+
+    for (size_t i = 0; i < ir.fn_no; i++) {
+        fwrite(&ir.code[i].size, sizeof(size_t), 1, file);
+        fwrite(ir.code[i].text, ir.code[i].size, 1, file);
+    }
 
     fclose(file);
 }
