@@ -3,13 +3,14 @@
 #include "assemble.h"
 
 bfd *create_bfd(JovisIR ir, char* out_name) {
-    // TODO: generate target based on target given in ir
-    bfd *abfd = bfd_openw(out_name, "elf64-x86-64");
+    // Create BFD
+    bfd *abfd = bfd_openw(out_name, "elf64-x86-64"); // TODO: generate target based on target given in ir
     if (abfd == NULL) printf("err creating bfd: %s\n", bfd_errmsg(bfd_get_error()));
     if (!bfd_set_format(abfd, bfd_object))
         printf("err setting format to object: %s\n", bfd_errmsg(bfd_get_error()));
     bfd_set_arch_info(abfd, bfd_scan_arch("i386:x86-64:intel"));
     
+    // Create sections and then set attributes
     asection *data = bfd_make_section_old_way(abfd, ".data");
     if (data == NULL) printf("err creating data section: %s\n", bfd_errmsg(bfd_get_error()));
     asection *code;
@@ -18,11 +19,12 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
         bfd_set_section_flags(code, SEC_HAS_CONTENTS);
         if (code == NULL) printf("err creating code section: %s ", bfd_errmsg(bfd_get_error()));
     }
-
     if (!bfd_set_section_size(data, ir.data_size))
         printf("err setting .data size: %s\n", bfd_errmsg(bfd_get_error()));
     if (!bfd_set_section_flags(data, SEC_HAS_CONTENTS))
         printf("err setting .data contents flag: %s\n", bfd_errmsg(bfd_get_error()));
+
+    // create data section symbol
     asymbol *data_sym = bfd_make_empty_symbol(abfd);
     if (data_sym == NULL) printf("data_sym null err");
     data_sym->name = "ldata";
@@ -30,6 +32,7 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     data_sym->flags = BSF_LOCAL;
     data_sym->value = 0;
 
+    // create symbol table
     size_t sym_no = ir.fn_no;
     sym_no += 1;
 
@@ -39,11 +42,10 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
 
     MCode mcodes[ir.fn_no];
     size_t mcode_size = 0;
-
     // loop through fns
     for (int i = 0; i < ir.fn_no; i++) {
         Fn fn = ir.code[i];
-        // for each fn, assemble it's code
+        // assemble fn's code
         MCode mcode = j_assemble(fn.text, fn.asm_arch, fn.asm_mode);
         // add symbol that points to start of fn
         asymbol *fn_sym = bfd_make_empty_symbol(abfd);
@@ -69,16 +71,22 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
         if (!bfd_set_symtab(abfd, sym_tab, sym_no))
             printf("err setting symbol table: %s\n", bfd_errmsg(bfd_get_error()));
     }
+
+    // free mallocated code
     if (ir.fn_no > 0) free(ir.code);
+    // set .text size now that we know for sure
     if (!bfd_set_section_size(code, mcode_size))
         printf("err setting .text size: %s\n", bfd_errmsg(bfd_get_error()));
 
-    // start writing to bfd
+    // START WRITING TO BFD
+
+    // set data section contents directly to data from ir
     if (!bfd_set_section_contents(abfd, data, ir.data, 0, ir.data_size))
         printf("err setting .data contents: %s\n", bfd_errmsg(bfd_get_error()));
     // free mallocated data in ir
     free(ir.data);
 
+    // set code section contents to all of the compiled code
     size_t cur_code_ptr = 0;
     for (size_t i = 0; i < ir.fn_no; i++) {
         // put machine code into the .code section
@@ -90,7 +98,7 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
         ks_free(mcode->encode);
     }
 
-    // add bfd_error checks TODO (done for the most part, need to actually halt on error though)
+    // TODO: demallocate deps
 
     return abfd;
 }
@@ -105,7 +113,6 @@ void link(char *entry_file) {
     // generate object file
     bool err = !bfd_close(abfd);
     if (err) printf("err at close: %s\n", bfd_errmsg(bfd_get_error()));
-    // add bfd_error checks TODO
 
     // link all object files together TODO
 }
