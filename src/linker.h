@@ -95,20 +95,17 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     return abfd;
 }
 
-void link(char **ir_files, size_t no_of_files) {
-    // for each IR file
-    for (size_t i = 0; i < no_of_files; i++) {
-        // create ir from file
-        JovisIR ir = open_jir(ir_files[i]);
-        // create bfd from ir
-        char file_name[10];
-        sprintf(file_name, "test%ld.o", i+1);
-        bfd *abfd = create_bfd(ir, file_name);
-        // generate object file
-        bool err = !bfd_close(abfd);
-        if (err) printf("err at close: %s\n", bfd_errmsg(bfd_get_error()));
-        // add bfd_error checks TODO
-    }
+void link(char *entry_file) {
+    // create ir from file
+    JovisIR ir = open_jir(entry_file);
+    // create bfd from ir
+    // char file_name[10];
+    // sprintf(file_name, "test%ld.o", i+1);
+    bfd *abfd = create_bfd(ir, "jexec.o");
+    // generate object file
+    bool err = !bfd_close(abfd);
+    if (err) printf("err at close: %s\n", bfd_errmsg(bfd_get_error()));
+    // add bfd_error checks TODO
 
     // link all object files together TODO
 }
