@@ -2,7 +2,9 @@
 #include "jovisir.h"
 #include "assemble.h"
 
-bfd *create_bfd(JovisIR ir, char* out_name) {
+int generate_obj(char *const ir_path, char *const out_file);
+
+bfd *create_bfd(JovisIR ir, char*const out_name) {
     // Create BFD
     bfd *abfd = bfd_openw(out_name, "elf64-x86-64"); // TODO: generate target based on target given in ir
     if (abfd == NULL) printf("err creating bfd: %s\n", bfd_errmsg(bfd_get_error()));
@@ -13,11 +15,11 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     // Create sections and then set attributes
     asection *data = bfd_make_section_old_way(abfd, ".data");
     if (data == NULL) printf("err creating data section: %s\n", bfd_errmsg(bfd_get_error()));
-    asection *code;
+    asection *text;
     if (ir.fn_no > 0) {
-        code = bfd_make_section_old_way(abfd, ".text");
-        bfd_set_section_flags(code, SEC_HAS_CONTENTS);
-        if (code == NULL) printf("err creating code section: %s ", bfd_errmsg(bfd_get_error()));
+        text = bfd_make_section_old_way(abfd, ".text");
+        bfd_set_section_flags(text, SEC_HAS_CONTENTS);
+        if (text == NULL) printf("err creating text section: %s ", bfd_errmsg(bfd_get_error()));
     }
     if (!bfd_set_section_size(data, ir.data_size))
         printf("err setting .data size: %s\n", bfd_errmsg(bfd_get_error()));
@@ -27,37 +29,58 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     // create data section symbol
     asymbol *data_sym = bfd_make_empty_symbol(abfd);
     if (data_sym == NULL) printf("data_sym null err");
-    data_sym->name = "ldata";
+    data_sym->name = "data";
     data_sym->section = data;
     data_sym->flags = BSF_LOCAL;
     data_sym->value = 0;
 
     // create symbol table
-    size_t sym_no = ir.fn_no;
-    sym_no += 1;
+    size_t sym_no = ir.fn_no + ir.dep_no + 1;
 
     asymbol *sym_tab[sym_no+1];
     sym_tab[sym_no-1] = data_sym;
     sym_tab[sym_no] = (asymbol *)0;
+
+    // add dependencies
+    for (size_t i = 0; i < ir.dep_no; i++) {
+        Dependency dep = ir.deps[i];
+        // add external symbol
+        char *path = malloc(dep.path_size+1);
+        sprintf(path, "o%s", dep.path); // TODO: transform path to be relative to root directory of compilation, or system root
+        // TODO: instead of making symbol, add to symbol resolver
+        asymbol *dep_sym = bfd_make_empty_symbol(abfd);
+        if (dep_sym == NULL) printf("data_sym null err");
+        dep_sym->name = path;
+        dep_sym->section = data;
+        dep_sym->flags = BSF_WEAK;
+        dep_sym->value = 0;
+        sym_tab[ir.fn_no + i] = dep_sym;
+        // TODO: generate dependency's object file
+        char out_file[5];
+        sprintf(out_file, "d%ld", i);
+        generate_obj(path, out_file);
+    }
 
     MCode mcodes[ir.fn_no];
     size_t mcode_size = 0;
     // loop through fns
     for (int i = 0; i < ir.fn_no; i++) {
         Fn fn = ir.code[i];
-        // assemble fn's code
-        MCode mcode = j_assemble(fn.text, fn.asm_arch, fn.asm_mode);
+
         // add symbol that points to start of fn
         asymbol *fn_sym = bfd_make_empty_symbol(abfd);
         if (fn_sym == NULL) printf("fn_sym null err");
-        char name[5];
+        char *name = malloc(5);
         sprintf(name, "f%d", i);
         fn_sym->name = name;
-        fn_sym->section = code;
+        fn_sym->section = text;
         fn_sym->flags = BSF_LOCAL;
-        fn_sym->value = code->size;
+        fn_sym->value = mcode_size;
 
         sym_tab[i] = fn_sym;
+
+        // assemble fn's code
+        MCode mcode = j_assemble(fn.text, fn.asm_arch, fn.asm_mode);
 
         // append mcode to the array
         mcodes[i] = mcode;
@@ -75,7 +98,7 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     // free mallocated code
     if (ir.fn_no > 0) free(ir.code);
     // set .text size now that we know for sure
-    if (!bfd_set_section_size(code, mcode_size))
+    if (!bfd_set_section_size(text, mcode_size))
         printf("err setting .text size: %s\n", bfd_errmsg(bfd_get_error()));
 
     // START WRITING TO BFD
@@ -86,12 +109,12 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     // free mallocated data in ir
     free(ir.data);
 
-    // set code section contents to all of the compiled code
+    // set text section contents to all of the compiled code
     size_t cur_code_ptr = 0;
     for (size_t i = 0; i < ir.fn_no; i++) {
-        // put machine code into the .code section
+        // put machine code into the .text section
         MCode *mcode = &mcodes[i];
-        if (!bfd_set_section_contents(abfd, code, mcode->encode, cur_code_ptr, mcode->size))
+        if (!bfd_set_section_contents(abfd, text, mcode->encode, cur_code_ptr, mcode->size))
             printf("err setting .text contents: %s\n", bfd_errmsg(bfd_get_error()));
         cur_code_ptr += mcode->size;
             
@@ -103,16 +126,26 @@ bfd *create_bfd(JovisIR ir, char* out_name) {
     return abfd;
 }
 
-void link(char *entry_file) {
+int generate_obj(char *const ir_path, char *const out_file) {
     // create ir from file
-    JovisIR ir = open_jir(entry_file);
+    JovisIR ir = open_jir(ir_path);
     // create bfd from ir
-    // char file_name[10];
-    // sprintf(file_name, "test%ld.o", i+1);
-    bfd *abfd = create_bfd(ir, "jexec.o");
+    bfd *abfd = create_bfd(ir, out_file);
     // generate object file
     bool err = !bfd_close(abfd);
-    if (err) printf("err at close: %s\n", bfd_errmsg(bfd_get_error()));
+    if (err) {
+        printf("err at close: %s\n", bfd_errmsg(bfd_get_error()));
+        return -1;
+    }
+
+    return 0;
+}
+
+int j_link(char *const entry_file) {
+    int bfd_err = generate_obj(entry_file, "jexec.o");
+    if (bfd_err == -1) return -1;
 
     // link all object files together TODO
+
+    return 0;
 }
